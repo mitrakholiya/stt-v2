@@ -61,6 +61,68 @@ export default function TranslatorPage() {
     setResult(null);
 
     try {
+      // VERCEL 4.5MB PAYLOAD BYPASS
+      // If file is large (> 4MB), bypass the Next.js API route completely
+      // by uploading directly to Azure from the browser.
+      const sizeMB = audioFile.size / (1024 * 1024);
+      if (sizeMB > 4.0) {
+        setWarning("Large file detected. Bypassing serverless limits...");
+
+        // 1. Get Job ID & Upload URL from our secure API
+        const initRes = await fetch("/api/translate-audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "initiate",
+            fileName: (audioFile as File).name || "audio.wav",
+          }),
+        });
+
+        if (!initRes.ok) {
+          const errData = await initRes.json().catch(() => ({}));
+          throw new Error(
+            `Failed to initiate cloud upload: ${errData.error || initRes.statusText}`,
+          );
+        }
+
+        const { jobId, uploadUrl } = await initRes.json();
+
+        // 2. Upload directly from Browser -> Azure Storage (bypasses Next.js entirely)
+        setWarning("Uploading securely to cloud server...");
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": audioFile.type || "audio/wav",
+          },
+          body: audioFile,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error("Failed to upload audio to cloud storage.");
+        }
+
+        // 3. Mark the batch job as "Started" on Sarvam
+        setWarning("Starting translation pipeline...");
+        const startRes = await fetch("/api/translate-audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "start", jobId }),
+        });
+
+        if (!startRes.ok) {
+          throw new Error("Failed to start the batch translation job.");
+        }
+
+        // 4. Start polling for the result
+        setWarning(
+          "Processing (this may take a few minutes for large files)...",
+        );
+        pollJobStatus(jobId, (audioFile as File).name || "audio.wav");
+        return; // Polling will handle the rest
+      }
+
+      // STANDARD ROUTE: For smaller files underneath the Vercel limit
       const formData = new FormData();
       formData.append("audio", audioFile);
       formData.append("targetLanguage", targetLanguage);
@@ -77,7 +139,7 @@ export default function TranslatorPage() {
       }
 
       if (data.status === "processing" && data.jobId) {
-        // Start polling
+        // Start polling fallback (if API route itself decided it needed batch processing)
         setWarning(
           "Long audio detected. Processing (this may take a few minutes)...",
         );
@@ -159,7 +221,6 @@ export default function TranslatorPage() {
         <div className="grid lg:grid-cols-[1fr,1.2fr] gap-8 items-start">
           {/* Left Column (Input) */}
           <div className="flex flex-col gap-6">
-            
             <AnimatePresence mode="popLayout">
               {!audioUrl ? (
                 <motion.div

@@ -15,6 +15,29 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // Check if json request (for direct cloud upload bypass)
+    if (req.headers.get("content-type")?.includes("application/json")) {
+      const body = await req.json();
+
+      // Step 1: Initiate job and get upload URL
+      if (body.action === "initiate") {
+        const { job_id } = await initiateBatchJob(body.fileName);
+        const uploadUrl = await getUploadUrl(job_id, body.fileName);
+        return NextResponse.json({ jobId: job_id, uploadUrl });
+      }
+
+      // Step 2: Start the batch job after client uploads directly
+      if (body.action === "start") {
+        await startBatchJob(body.jobId);
+        return NextResponse.json({
+          success: true,
+          status: "processing",
+          jobId: body.jobId,
+          message: "Batch processing started",
+        });
+      }
+    }
+
     const formData = await req.formData();
 
     const audioFile = formData.get("audio") as File | null;
@@ -78,10 +101,16 @@ export async function POST(req: NextRequest) {
       originalText = sttResult.text;
       languageCode = sttResult.languageCode;
     } catch (sttError: unknown) {
-      const errStr = sttError instanceof Error ? sttError.message : String(sttError);
+      const errStr =
+        sttError instanceof Error ? sttError.message : String(sttError);
       // Fallback if Sarvam complains about audio duration
-      if (errStr.toLowerCase().includes("duration greater than 30 seconds") || errStr.toLowerCase().includes("too long")) {
-        console.log("STT failed due to duration (>30s), automatically falling back to batch API...");
+      if (
+        errStr.toLowerCase().includes("duration greater than 30 seconds") ||
+        errStr.toLowerCase().includes("too long")
+      ) {
+        console.log(
+          "STT failed due to duration (>30s), automatically falling back to batch API...",
+        );
         return await handleBatchFallback();
       }
       throw sttError; // Re-throw other errors
@@ -93,7 +122,9 @@ export async function POST(req: NextRequest) {
 
     // Get dynamic natural speaker configuration
     const speakerConfig = getRandomSpeakerConfig();
-    console.log(`Selected Speaker: ${speakerConfig.name} (${speakerConfig.gender}), Pace: ${speakerConfig.pace}`);
+    console.log(
+      `Selected Speaker: ${speakerConfig.name} (${speakerConfig.gender}), Pace: ${speakerConfig.pace}`,
+    );
 
     // Step 2: Translate Text
     console.log(`Translating text to ${targetLanguage}...`);
@@ -101,7 +132,7 @@ export async function POST(req: NextRequest) {
       originalText,
       targetLanguage,
       languageCode,
-      speakerConfig.gender
+      speakerConfig.gender,
     );
 
     if (!translatedText) {
@@ -117,19 +148,27 @@ export async function POST(req: NextRequest) {
       ];
       for (const chunk of chunks) {
         if (chunk.trim()) {
-          const base64 = await textToSpeech(chunk.trim(), targetLanguage, speakerConfig);
+          const base64 = await textToSpeech(
+            chunk.trim(),
+            targetLanguage,
+            speakerConfig,
+          );
           audioParts.push(base64);
         }
       }
     } else {
-      const base64 = await textToSpeech(translatedText, targetLanguage, speakerConfig);
+      const base64 = await textToSpeech(
+        translatedText,
+        targetLanguage,
+        speakerConfig,
+      );
       audioParts = [base64];
     }
 
     if (audioParts.length === 0) {
       throw new Error("Text-to-Speech failed. Result was empty.");
     }
-    
+
     // Merge the WAV chunks into a single valid base64 audio string
     const mergedAudioBase64 = mergeWavBase64(audioParts);
 
