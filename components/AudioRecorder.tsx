@@ -45,6 +45,7 @@ export function AudioRecorder({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: "audio/webm;codecs=opus",
+        audioBitsPerSecond: 32000, // 32 kbps is enough for voice and keeps 5+ min audio under Vercel's 4.5MB limit
       });
 
       mediaRecorderRef.current = mediaRecorder;
