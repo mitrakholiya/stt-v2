@@ -36,9 +36,72 @@ export async function POST(req: NextRequest) {
           message: "Batch processing started",
         });
       }
+
+      // Step 3 (Chunked fallback proxy): Commit blocks
+      if (body.action === "commitUpload") {
+        const { uploadUrl, blockIds, mimeType } = body;
+
+        const blockListXml = `<?xml version="1.0" encoding="utf-8"?><BlockList>${blockIds.map((id: string) => `<Latest>${id}</Latest>`).join("")}</BlockList>`;
+
+        const commitRes = await fetch(`${uploadUrl}&comp=blocklist`, {
+          method: "PUT",
+          headers: {
+            "x-ms-blob-content-type": mimeType,
+            "Content-Type": "application/xml",
+          },
+          body: blockListXml,
+        });
+
+        if (!commitRes.ok) {
+          const errText = await commitRes.text();
+          console.error("Azure Commit Error:", errText);
+          return NextResponse.json(
+            { error: "Failed to commit chunked upload to Azure." },
+            { status: 500 },
+          );
+        }
+        return NextResponse.json({ success: true });
+      }
     }
 
     const formData = await req.formData();
+
+    // Chunked Upload Proxy Route
+    const action = formData.get("action") as string | null;
+    if (action === "uploadChunk") {
+      const uploadUrl = formData.get("uploadUrl") as string;
+      const blockId = formData.get("blockId") as string;
+      const chunk = formData.get("chunk") as File | null;
+
+      if (!chunk)
+        return NextResponse.json(
+          { error: "No chunk provided" },
+          { status: 400 },
+        );
+
+      const chunkBuffer = Buffer.from(await chunk.arrayBuffer());
+
+      const chunkRes = await fetch(
+        `${uploadUrl}&comp=block&blockid=${encodeURIComponent(blockId)}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Length": chunkBuffer.length.toString(),
+          },
+          body: chunkBuffer,
+        },
+      );
+
+      if (!chunkRes.ok) {
+        const errText = await chunkRes.text();
+        console.error("Azure Chunk Upload Error:", errText);
+        return NextResponse.json(
+          { error: "Failed to upload chunk to Azure." },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({ success: true });
+    }
 
     const audioFile = formData.get("audio") as File | null;
     const targetLanguage = formData.get("targetLanguage") as string | null;

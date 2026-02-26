@@ -87,22 +87,59 @@ export default function TranslatorPage() {
 
         const { jobId, uploadUrl } = await initRes.json();
 
-        // 2. Upload directly from Browser -> Azure Storage (bypasses Next.js entirely)
-        setWarning("Uploading securely to cloud server...");
-        const uploadRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: {
-            "x-ms-blob-type": "BlockBlob",
-            "Content-Type": audioFile.type || "audio/wav",
-          },
-          body: audioFile,
-        });
+        // 2. Upload in Chunks via Next.js Proxy (< 4.5MB per chunk to bypass Vercel limits)
+        // And since Next.js talks to Azure, we bypass Browser CORS limits.
+        setWarning("Uploading large file in chunks securely...");
 
-        if (!uploadRes.ok) {
-          throw new Error("Failed to upload audio to cloud storage.");
+        const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks
+        const totalChunks = Math.ceil(audioFile.size / CHUNK_SIZE);
+        const blockIds: string[] = [];
+
+        for (let i = 0; i < totalChunks; i++) {
+          setWarning(`Uploading chunk ${i + 1} of ${totalChunks}...`);
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, audioFile.size);
+          const chunk = audioFile.slice(start, end);
+
+          // Generate a valid block ID (must be base64 encoded and same length for all blocks)
+          const blockIdStr = `block-${i.toString().padStart(5, "0")}`;
+          const blockId = btoa(blockIdStr);
+          blockIds.push(blockId);
+
+          const chunkFormData = new FormData();
+          chunkFormData.append("action", "uploadChunk");
+          chunkFormData.append("uploadUrl", uploadUrl);
+          chunkFormData.append("blockId", blockId);
+          chunkFormData.append("chunk", chunk);
+
+          const chunkRes = await fetch("/api/translate-audio", {
+            method: "POST",
+            body: chunkFormData,
+          });
+
+          if (!chunkRes.ok) {
+            throw new Error(`Failed to upload chunk ${i + 1}`);
+          }
         }
 
-        // 3. Mark the batch job as "Started" on Sarvam
+        // 3. Commit the chunks
+        setWarning("Finalizing upload...");
+        const commitRes = await fetch("/api/translate-audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "commitUpload",
+            uploadUrl,
+            blockIds,
+            mimeType: audioFile.type || "audio/wav",
+          }),
+        });
+
+        if (!commitRes.ok) {
+          throw new Error("Failed to finalize file upload.");
+        }
+
+        // 4. Mark the batch job as "Started" on Sarvam
         setWarning("Starting translation pipeline...");
         const startRes = await fetch("/api/translate-audio", {
           method: "POST",
