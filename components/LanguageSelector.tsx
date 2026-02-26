@@ -2,29 +2,17 @@ import React from "react";
 import { Languages, ArrowRight } from "lucide-react";
 
 export const SUPPORTED_LANGUAGES = [
-  { code: "hi-IN", name: "Hindi" },
   { code: "bn-IN", name: "Bengali" },
-  { code: "ta-IN", name: "Tamil" },
-  { code: "te-IN", name: "Telugu" },
+  { code: "en-IN", name: "English" },
+  { code: "gu-IN", name: "Gujarati" },
+  { code: "hi-IN", name: "Hindi" },
+  { code: "kn-IN", name: "Kannada" },
   { code: "ml-IN", name: "Malayalam" },
   { code: "mr-IN", name: "Marathi" },
-  { code: "gu-IN", name: "Gujarati" },
-  { code: "kn-IN", name: "Kannada" },
   { code: "od-IN", name: "Odia" },
   { code: "pa-IN", name: "Punjabi" },
-  { code: "as-IN", name: "Assamese" },
-  { code: "brx-IN", name: "Bodo" },
-  { code: "doi-IN", name: "Dogri" },
-  { code: "kok-IN", name: "Konkani" },
-  { code: "ks-IN", name: "Kashmiri" },
-  { code: "mai-IN", name: "Maithili" },
-  { code: "mni-IN", name: "Manipuri" },
-  { code: "ne-IN", name: "Nepali" },
-  { code: "sa-IN", name: "Sanskrit" },
-  { code: "sat-IN", name: "Santali" },
-  { code: "sd-IN", name: "Sindhi" },
-  { code: "ur-IN", name: "Urdu" },
-  { code: "en-IN", name: "English" },
+  { code: "ta-IN", name: "Tamil" },
+  { code: "te-IN", name: "Telugu" },
 ];
 
 interface LanguageSelectorProps {

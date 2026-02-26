@@ -22,6 +22,11 @@ export default function TranslatorPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null); // To preview recorded audio if needed
 
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+    message: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
@@ -56,6 +61,7 @@ export default function TranslatorPage() {
     if (!audioFile) return;
 
     setIsLoading(true);
+    setUploadProgress(null);
     setError(null);
     setWarning(null);
     setResult(null);
@@ -66,8 +72,6 @@ export default function TranslatorPage() {
       // by uploading directly to Azure from the browser.
       const sizeMB = audioFile.size / (1024 * 1024);
       if (sizeMB > 4.0) {
-        setWarning("Large file detected. Bypassing serverless limits...");
-
         // 1. Get Job ID & Upload URL from our secure API
         const initRes = await fetch("/api/translate-audio", {
           method: "POST",
@@ -89,14 +93,22 @@ export default function TranslatorPage() {
 
         // 2. Upload in Chunks via Next.js Proxy (< 4.5MB per chunk to bypass Vercel limits)
         // And since Next.js talks to Azure, we bypass Browser CORS limits.
-        setWarning("Uploading large file in chunks securely...");
+        setUploadProgress({
+          current: 0,
+          total: 1,
+          message: "Preparing secure direct upload...",
+        });
 
         const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks
         const totalChunks = Math.ceil(audioFile.size / CHUNK_SIZE);
         const blockIds: string[] = [];
 
         for (let i = 0; i < totalChunks; i++) {
-          setWarning(`Uploading chunk ${i + 1} of ${totalChunks}...`);
+          setUploadProgress({
+            current: i,
+            total: totalChunks,
+            message: `Uploading chunk ${i + 1} of ${totalChunks}...`,
+          });
           const start = i * CHUNK_SIZE;
           const end = Math.min(start + CHUNK_SIZE, audioFile.size);
           const chunk = audioFile.slice(start, end);
@@ -123,7 +135,11 @@ export default function TranslatorPage() {
         }
 
         // 3. Commit the chunks
-        setWarning("Finalizing upload...");
+        setUploadProgress({
+          current: totalChunks,
+          total: totalChunks,
+          message: "Finalizing upload on cloud server...",
+        });
         const commitRes = await fetch("/api/translate-audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -140,7 +156,11 @@ export default function TranslatorPage() {
         }
 
         // 4. Mark the batch job as "Started" on Sarvam
-        setWarning("Starting translation pipeline...");
+        setUploadProgress({
+          current: totalChunks,
+          total: totalChunks,
+          message: "Starting translation pipeline...",
+        });
         const startRes = await fetch("/api/translate-audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -151,10 +171,10 @@ export default function TranslatorPage() {
           throw new Error("Failed to start the batch translation job.");
         }
 
+        // Upload is finished, we can drop the progress bar and show the "Analyizing Audio" spinner
+        setUploadProgress(null);
+
         // 4. Start polling for the result
-        setWarning(
-          "Processing (this may take a few minutes for large files)...",
-        );
         pollJobStatus(jobId, (audioFile as File).name || "audio.wav");
         return; // Polling will handle the rest
       }
@@ -426,14 +446,35 @@ export default function TranslatorPage() {
               )}
 
               {isLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-900/60 backdrop-blur-sm rounded-3xl">
-                  <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
-                  <h3 className="text-xl font-bold text-white mb-2">
-                    Analyzing Audio
-                  </h3>
-                  <p className="text-indigo-200">
-                    Sarvam Bulbul v3 is processing...
-                  </p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-900/60 backdrop-blur-sm rounded-3xl p-8">
+                  {uploadProgress ? (
+                    <div className="w-full max-w-sm flex flex-col items-center gap-4">
+                      <div className="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
+                        <div
+                          className="bg-indigo-500 h-full rounded-full transition-all duration-300 ease-out"
+                          style={{
+                            width: `${Math.max(5, (uploadProgress.current / uploadProgress.total) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-1">
+                        Uploading Audio
+                      </h3>
+                      <p className="text-indigo-200 text-sm text-center">
+                        {uploadProgress.message}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
+                      <h3 className="text-xl font-bold text-white mb-2">
+                        Analyzing Audio
+                      </h3>
+                      <p className="text-indigo-200">
+                        Sarvam Bulbul v3 is processing...
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 
