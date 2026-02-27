@@ -159,12 +159,12 @@ export async function GET(req: NextRequest) {
       }
 
       // Step 3: TTS
-      // Bulbul v3 supports up to 2500 characters per call
+      // Bulbul v3 supports up to 500 characters per call
       let audioParts: string[] = [];
-      if (translatedText.length > 2500) {
+      if (translatedText.length > 500) {
         // Simple chunking logic
-        const chunks = translatedText.match(/[\s\S]{1,2400}(\s|$)/g) || [
-          translatedText.substring(0, 2500),
+        const chunks = translatedText.match(/[\s\S]{1,490}(\s|$)/g) || [
+          translatedText.substring(0, 500),
         ];
         const validChunks = chunks.filter((c: string) => c.trim());
         audioParts = await Promise.all(

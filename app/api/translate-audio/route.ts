@@ -222,10 +222,10 @@ export async function POST(req: NextRequest) {
     // Step 3: Text-to-Speech
     console.log(`Converting translated text to speech...`);
     let audioParts: string[] = [];
-    // Bulbul v3 supports up to 2500 characters per call
-    if (translatedText.length > 2500) {
-      const chunks = translatedText.match(/[\s\S]{1,2400}(\s|$)/g) || [
-        translatedText.substring(0, 2500),
+    // Bulbul v3 supports up to 500 characters per call
+    if (translatedText.length > 500) {
+      const chunks = translatedText.match(/[\s\S]{1,490}(\s|$)/g) || [
+        translatedText.substring(0, 500),
       ];
       const validChunks = chunks.filter((c) => c.trim());
       audioParts = await Promise.all(
