@@ -191,12 +191,29 @@ export async function POST(req: NextRequest) {
 
     // Step 2: Translate Text
     console.log(`Translating text to ${targetLanguage}...`);
-    const translatedText = await translateText(
-      originalText,
-      targetLanguage,
-      languageCode,
-      speakerConfig.gender,
-    );
+    let translatedText = "";
+    let warningMessage: string | undefined = undefined;
+
+    try {
+      translatedText = await translateText(
+        originalText,
+        targetLanguage,
+        languageCode,
+        speakerConfig.gender,
+      );
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      if (errStr.includes("Source and target languages must be different")) {
+        console.log(
+          "Source and target languages are the same, skipping translation.",
+        );
+        translatedText = originalText;
+        warningMessage =
+          "Please change language, it is the same as the uploaded audio.";
+      } else {
+        throw err;
+      }
+    }
 
     if (!translatedText) {
       throw new Error("Translation failed. Result was empty.");
@@ -205,20 +222,17 @@ export async function POST(req: NextRequest) {
     // Step 3: Text-to-Speech
     console.log(`Converting translated text to speech...`);
     let audioParts: string[] = [];
-    if (translatedText.length > 500) {
-      const chunks = translatedText.match(/[\s\S]{1,490}(\s|$)/g) || [
-        translatedText.substring(0, 500),
+    // Bulbul v3 supports up to 2500 characters per call
+    if (translatedText.length > 2500) {
+      const chunks = translatedText.match(/[\s\S]{1,2400}(\s|$)/g) || [
+        translatedText.substring(0, 2500),
       ];
-      for (const chunk of chunks) {
-        if (chunk.trim()) {
-          const base64 = await textToSpeech(
-            chunk.trim(),
-            targetLanguage,
-            speakerConfig,
-          );
-          audioParts.push(base64);
-        }
-      }
+      const validChunks = chunks.filter((c) => c.trim());
+      audioParts = await Promise.all(
+        validChunks.map((chunk) =>
+          textToSpeech(chunk.trim(), targetLanguage, speakerConfig),
+        ),
+      );
     } else {
       const base64 = await textToSpeech(
         translatedText,
@@ -240,6 +254,7 @@ export async function POST(req: NextRequest) {
       originalText,
       translatedText,
       audioBase64: mergedAudioBase64,
+      ...(warningMessage ? { warning: warningMessage } : {}),
     });
   } catch (error: unknown) {
     let errorMsg = error instanceof Error ? error.message : String(error);

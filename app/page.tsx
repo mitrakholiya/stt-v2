@@ -203,6 +203,7 @@ export default function TranslatorPage() {
         pollJobStatus(data.jobId, data.fileName);
       } else {
         setResult(data);
+        setWarning(data.warning || null);
         setIsLoading(false);
       }
     } catch (err: unknown) {
@@ -231,7 +232,7 @@ export default function TranslatorPage() {
           setResult(data);
           setIsLoading(false);
           setError(null);
-          setWarning(null);
+          setWarning(data.warning || null);
         } else if (data.status === "failed") {
           setError(`Batch processing failed: ${data.error}`);
           setIsLoading(false);

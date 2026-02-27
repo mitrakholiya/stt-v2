@@ -95,23 +95,68 @@ export async function translateText(
 
 // All Bulbul v3 speakers
 const speakers = [
-  "anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh", 
-  "aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", 
-  "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", 
-  "sumit", "roopa", "kabir", "aayan", "shubh", "ashutosh", "advait", 
-  "amelia", "sophia", "anand", "tanya", "tarun", "sunny", "mani", "gokul", 
-  "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali"
+  "anushka",
+  "abhilash",
+  "manisha",
+  "vidya",
+  "arya",
+  "karun",
+  "hitesh",
+  "aditya",
+  "ritu",
+  "priya",
+  "neha",
+  "rahul",
+  "pooja",
+  "rohan",
+  "simran",
+  "kavya",
+  "amit",
+  "dev",
+  "ishita",
+  "shreya",
+  "ratan",
+  "varun",
+  "manan",
+  "sumit",
+  "roopa",
+  "kabir",
+  "aayan",
+  "shubh",
+  "ashutosh",
+  "advait",
+  "amelia",
+  "sophia",
+  "anand",
+  "tanya",
+  "tarun",
+  "sunny",
+  "mani",
+  "gokul",
+  "vijay",
+  "shruti",
+  "suhani",
+  "mohit",
+  "kavitha",
+  "rehan",
+  "soham",
+  "rupali",
 ];
 
 // Natural sounding Female speakers
 const femaleSpeakers = [
-  "priya", "shreya", "sophia", "amelia", "ritu", "neha", "ishita", "kavya"
+  "priya",
+  "shreya",
+  "sophia",
+  "amelia",
+  "ritu",
+  "neha",
+  "ishita",
+  "kavya",
 ];
 
 // Natural sounding Male speakers
-const maleSpeakers = [
-  "aditya", "rahul", "kabir"
-];
+const maleSpeakers = ["aditya", "rahul", "kabir"];
 
 export interface SpeakerConfig {
   name: string;
@@ -121,16 +166,17 @@ export interface SpeakerConfig {
 
 export function getRandomSpeakerConfig(): SpeakerConfig {
   const isFemale = Math.random() > 0.5; // 50% chance
-  
+
   if (isFemale) {
-    const name = femaleSpeakers[Math.floor(Math.random() * femaleSpeakers.length)];
+    const name =
+      femaleSpeakers[Math.floor(Math.random() * femaleSpeakers.length)];
     // Female natural pace adjustment: slightly faster or varied 1.0 - 1.15
-    const pace = parseFloat((1.0 + (Math.random() * 0.15)).toFixed(2));
+    const pace = parseFloat((1.0 + Math.random() * 0.15).toFixed(2));
     return { name, gender: "Female", pace };
   } else {
     const name = maleSpeakers[Math.floor(Math.random() * maleSpeakers.length)];
     // Male natural pace adjustment: slightly slower for deeper emphasis 0.95 - 1.05
-    const pace = parseFloat((0.95 + (Math.random() * 0.10)).toFixed(2));
+    const pace = parseFloat((0.95 + Math.random() * 0.1).toFixed(2));
     return { name, gender: "Male", pace };
   }
 }
@@ -141,7 +187,7 @@ export async function textToSpeech(
   speakerConfig?: SpeakerConfig, // Optional fallback support
 ): Promise<string> {
   const url = "https://api.sarvam.ai/text-to-speech";
-  
+
   const config = speakerConfig || getRandomSpeakerConfig();
 
   const payload = {
@@ -359,21 +405,23 @@ export function mergeWavBase64(base64Array: string[]): string {
 
   try {
     const buffers = base64Array.map((b64) => Buffer.from(b64, "base64"));
-    
+
     // Check if the files are long enough to have a 44 byte header
     if (buffers.some((b) => b.length < 44)) {
-      console.error("One or more audio chunks are too short to be standard WAV files.");
+      console.error(
+        "One or more audio chunks are too short to be standard WAV files.",
+      );
       return base64Array[0]; // fallback
     }
 
     let totalDataLength = 0;
     for (let i = 0; i < buffers.length; i++) {
-      totalDataLength += (buffers[i].length - 44);
+      totalDataLength += buffers[i].length - 44;
     }
 
     // Extract the header from the first chunk
     const header = Buffer.from(buffers[0].subarray(0, 44));
-    
+
     // Standard WAV Header: Data length is at offset 40 (4 bytes, little-endian)
     header.writeUInt32LE(totalDataLength, 40);
     // Standard WAV Header: RIFF chunk size is at offset 4 (totalDataLength + 36)
@@ -382,7 +430,7 @@ export function mergeWavBase64(base64Array: string[]): string {
     // Concatenate the new header with the raw PCM data of all chunks (stripping the 44-byte headers)
     const pcmBuffers = buffers.map((b) => b.subarray(44));
     const mergedBuffer = Buffer.concat([header, ...pcmBuffers]);
-    
+
     return mergedBuffer.toString("base64");
   } catch (error) {
     console.error("Failed to merge WAV base64 arrays:", error);

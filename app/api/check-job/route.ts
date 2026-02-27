@@ -47,7 +47,6 @@ export async function GET(req: NextRequest) {
             }
           }
         }
-        
       }
 
       // If we couldn't get file names from job_details, try common patterns
@@ -108,59 +107,80 @@ export async function GET(req: NextRequest) {
       }
 
       const speakerConfig = getRandomSpeakerConfig();
-      console.log(`[Batch] Selected Speaker: ${speakerConfig.name} (${speakerConfig.gender}), Pace: ${speakerConfig.pace}`);
+      console.log(
+        `[Batch] Selected Speaker: ${speakerConfig.name} (${speakerConfig.gender}), Pace: ${speakerConfig.pace}`,
+      );
 
       // Step 2: Translate
       // Sarvam Translate API has a 2000 character limit per request.
       // We need to chunk the originalText if it's too long.
       let translatedText = "";
-      if (originalText.length > 1900) {
-        // Split by sentences or paragraphs if possible, otherwise by safe chunk size
-        const textChunks = originalText.match(
-          /[\s\S]{1,1900}(?:\.|\n|\s|$)/g,
-        ) || [originalText];
-        const translatedChunks = [];
+      let warningMessage: string | undefined = undefined;
 
-        for (const chunk of textChunks) {
-          if (chunk.trim()) {
-            const translatedChunk = await translateText(
-              chunk.trim(),
-              targetLanguage,
-              sourceLanguageCode,
-              speakerConfig.gender
-            );
-            translatedChunks.push(translatedChunk);
-          }
+      try {
+        if (originalText.length > 1900) {
+          // Split by sentences or paragraphs if possible, otherwise by safe chunk size
+          const textChunks = originalText.match(
+            /[\s\S]{1,1900}(?:\.|\n|\s|$)/g,
+          ) || [originalText];
+
+          const validChunks = textChunks.filter((c: string) => c.trim());
+          const translatedChunks = await Promise.all(
+            validChunks.map((chunk: string) =>
+              translateText(
+                chunk.trim(),
+                targetLanguage,
+                sourceLanguageCode,
+                speakerConfig.gender,
+              ),
+            ),
+          );
+          translatedText = translatedChunks.join(" ");
+        } else {
+          translatedText = await translateText(
+            originalText,
+            targetLanguage,
+            sourceLanguageCode,
+            speakerConfig.gender,
+          );
         }
-        translatedText = translatedChunks.join(" ");
-      } else {
-        translatedText = await translateText(
-          originalText,
-          targetLanguage,
-          sourceLanguageCode,
-          speakerConfig.gender
-        );
+      } catch (err: unknown) {
+        const errStr = err instanceof Error ? err.message : String(err);
+        if (errStr.includes("Source and target languages must be different")) {
+          console.log(
+            "Source and target languages are the same, skipping translation.",
+          );
+          translatedText = originalText;
+          warningMessage =
+            "Please change language, it is the same as the uploaded audio.";
+        } else {
+          throw err;
+        }
       }
 
       // Step 3: TTS
-      // For long text, we might need to chunk it for Bulbul v3 (500 chars limit)
+      // Bulbul v3 supports up to 2500 characters per call
       let audioParts: string[] = [];
-      if (translatedText.length > 500) {
+      if (translatedText.length > 2500) {
         // Simple chunking logic
-        const chunks = translatedText.match(/[\s\S]{1,490}(\s|$)/g) || [
-          translatedText.substring(0, 500),
+        const chunks = translatedText.match(/[\s\S]{1,2400}(\s|$)/g) || [
+          translatedText.substring(0, 2500),
         ];
-        for (const chunk of chunks) {
-          if (chunk.trim()) {
-            const base64 = await textToSpeech(chunk.trim(), targetLanguage, speakerConfig);
-            audioParts.push(base64);
-          }
-        }
+        const validChunks = chunks.filter((c: string) => c.trim());
+        audioParts = await Promise.all(
+          validChunks.map((chunk: string) =>
+            textToSpeech(chunk.trim(), targetLanguage, speakerConfig),
+          ),
+        );
       } else {
-        const base64 = await textToSpeech(translatedText, targetLanguage, speakerConfig);
+        const base64 = await textToSpeech(
+          translatedText,
+          targetLanguage,
+          speakerConfig,
+        );
         audioParts = [base64];
       }
-      
+
       const mergedAudioBase64 = mergeWavBase64(audioParts);
 
       return NextResponse.json({
@@ -168,6 +188,7 @@ export async function GET(req: NextRequest) {
         originalText,
         translatedText,
         audioBase64: mergedAudioBase64,
+        ...(warningMessage ? { warning: warningMessage } : {}),
       });
     }
 
